@@ -20,6 +20,7 @@ import { canTransition, isWithinBookingHorizon } from './domain.js';
 import { requireRoles } from './authorization.js';
 
 const logger = pino({ level: process.env.LOG_LEVEL || 'info', redact: ['req.headers.cookie', 'req.headers.authorization', 'req.headers.idempotency-key', 'res.headers.set-cookie'] });
+const runningOnVercel = process.env.VERCEL === '1' || process.env.VERCEL === 'true';
 const app = express();
 const httpServer = createServer(app);
 let io: SocketIOServer | undefined;
@@ -37,10 +38,43 @@ app.use((req, res, next) => {
 });
 app.use(express.json({ limit: '32kb' }));
 app.use(cookieParser(process.env.COOKIE_SECRET));
-app.get('/health', (_req, res) => res.json({ status: 'ok' }));
-app.get('/ready', (_req, res) => mongoose.connection.readyState === 1 ? res.json({ status: 'ready' }) : res.status(503).json({ status: 'not_ready' }));
+app.get('/', (_req, res) => res.json({ service: 'RamLaksh API', status: 'ok', health: '/api/v1/health' }));
+app.get('/health', (_req, res) => res.json({ status: 'ok', realtime: runningOnVercel ? 'polling' : 'socket' }));
+app.get('/ready', async (_req, res) => {
+  try { await initializeDatabase(); res.json({ status: 'ready' }); }
+  catch { res.status(503).json({ status: 'not_ready' }); }
+});
 const api = express.Router();
 app.use('/api/v1', api);
+let databaseInitialization: Promise<void> | undefined;
+async function initializeDatabase() {
+  if (!process.env.MONGODB_URI) throw new Error('MONGODB_URI is required');
+  secret();
+  try { new Intl.DateTimeFormat('en', { timeZone: process.env.BUSINESS_TIME_ZONE || 'Asia/Kolkata' }).format(); }
+  catch { throw new Error('BUSINESS_TIME_ZONE must be a valid IANA time zone'); }
+  if (process.env.NODE_ENV === 'production') {
+    const originsAreSecure = Boolean(process.env.WEB_ORIGIN) && allowedOrigins.every(origin => {
+      try { const parsed = new URL(origin); return parsed.protocol === 'https:' && parsed.origin === origin; }
+      catch { return false; }
+    });
+    if (!originsAreSecure) throw new Error('WEB_ORIGIN must contain exact HTTPS production origins');
+  }
+  if (!databaseInitialization) {
+    databaseInitialization = mongoose.connect(process.env.MONGODB_URI)
+      .then(() => seedCatalog())
+      .then(() => undefined)
+      .catch(error => { databaseInitialization = undefined; throw error; });
+  }
+  return databaseInitialization;
+}
+api.get('/health', (_req, res) => res.json({ status: 'ok', realtime: runningOnVercel ? 'polling' : 'socket' }));
+api.use((_req, res, next) => {
+  if (process.env.NODE_ENV === 'test') return next();
+  void initializeDatabase().then(() => next()).catch(error => {
+    logger.error({ errorType: error instanceof Error ? error.name : 'UnknownError' }, 'API database initialization failed; check MongoDB configuration and network access');
+    res.status(503).json({ error: { code: 'SERVICE_UNAVAILABLE', message: 'The service is temporarily unavailable. Check the API database configuration.' } });
+  });
+});
 const limiter = rateLimit({ windowMs: 15 * 60_000, limit: 30, standardHeaders: true, legacyHeaders: false });
 const loginLimiter = rateLimit({ windowMs: 15 * 60_000, limit: 10, standardHeaders: true, legacyHeaders: false });
 const lookupLimiter = rateLimit({ windowMs: 15 * 60_000, limit: 5, standardHeaders: true, legacyHeaders: false });
@@ -259,6 +293,7 @@ protectedApi.patch('/settings', async (req: AuthRequest, res, next) => { try { c
 protectedApi.get('/audit-logs', async (req, res, next) => { try { const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 50)); res.json({ data: await AuditLog.find().sort({ at: -1 }).limit(limit).lean() }); } catch (e) { next(e); } });
 const errors: ErrorRequestHandler = (error, req, res, _next) => { req.log.error({ err: error, requestId: req.id }, 'request failed'); if (error?.code === 11000) return res.status(409).json({ error: { code: 'DUPLICATE', message: 'This record already exists' } }); return res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'Something went wrong' } }); };
 app.use(errors);
+if (!runningOnVercel) {
 io = new SocketIOServer(httpServer, { cors: { origin: allowedOrigins, credentials: true } });
 io.use(async (socket, next) => {
   try {
@@ -280,24 +315,18 @@ io.on('connection', socket => {
   expiryTimer.unref();
   socket.on('disconnect', () => clearTimeout(expiryTimer));
 });
+}
 const port = Number(process.env.PORT || 4000);
 async function start() {
-  if (!process.env.MONGODB_URI) throw new Error('MONGODB_URI is required');
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('PORT must be a valid TCP port');
-  secret();
-  try { new Intl.DateTimeFormat('en', { timeZone: process.env.BUSINESS_TIME_ZONE || 'Asia/Kolkata' }).format(); }
-  catch { throw new Error('BUSINESS_TIME_ZONE must be a valid IANA time zone'); }
-  if (process.env.NODE_ENV === 'production') {
-    const originsAreSecure = Boolean(process.env.WEB_ORIGIN) && allowedOrigins.every(origin => {
-      try { const parsed = new URL(origin); return parsed.protocol === 'https:' && parsed.origin === origin; }
-      catch { return false; }
-    });
-    if (!originsAreSecure) throw new Error('WEB_ORIGIN must contain exact HTTPS production origins');
-  }
-  await mongoose.connect(process.env.MONGODB_URI);
-  await seedCatalog();
+  await initializeDatabase();
   httpServer.listen(port, () => logger.info({ port }, 'API listening'));
 }
-if (process.env.NODE_ENV !== 'test') start().catch(error => { logger.error({ errorType: error instanceof Error ? error.name : 'UnknownError' }, 'API startup failed; check required configuration and database connectivity'); process.exit(1); });
-process.on('SIGTERM', () => { io?.close(() => { mongoose.disconnect().finally(() => process.exit(0)); }); });
+if (!runningOnVercel && process.env.NODE_ENV !== 'test') start().catch(error => { logger.error({ errorType: error instanceof Error ? error.name : 'UnknownError' }, 'API startup failed; check required configuration and database connectivity'); process.exit(1); });
+process.on('SIGTERM', () => {
+  const finish = () => { void mongoose.disconnect().finally(() => process.exit(0)); };
+  if (io) io.close(finish);
+  else finish();
+});
 export { app };
+export default app;

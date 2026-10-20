@@ -97,4 +97,5 @@
 @media(max-width:850px){.admin-catalog-edit{grid-template-columns:1fr}.service-type-form{grid-column:auto}}
 @media(max-width:900px){.admin-content .page-section{padding:24px 20px}}
 @media(max-width:640px){.admin-catalog-edit>form:first-child,.service-type-form{grid-template-columns:1fr}.admin-catalog-edit>form:first-child>h2,.admin-catalog-edit>form:first-child>label.field:nth-of-type(5),.admin-catalog-edit>form:first-child>.form-actions,.service-type-form>h2,.service-type-form>label.field:nth-of-type(1),.service-type-form>.form-grid,.service-type-form>label.field:nth-of-type(6),.service-type-form>.form-help,.service-type-form>.form-actions{grid-column:1}.service-type-form>.form-grid{grid-template-columns:1fr}}
+.admin-live-indicator.is-polling i{background:#d7a43b;box-shadow:0 0 0 3px #fff4dc}
 @media(max-width:640px){.admin-content .page-section{padding:20px 16px}}

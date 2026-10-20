@@ -67,9 +67,13 @@ Web: `VITE_API_URL`. Set API origins and frontend origin consistently for deploy
 
 ## Deployment
 
-- **Web (Vercel):** set project root to `apps/web`; configure `VITE_API_URL` to the deployed API's `/api/v1` URL and configure SPA rewrites to `/index.html`.
-- **API (Render or Node host):** build with `npm install && npm run build --workspace @ramlax/api`; start with `npm run start --workspace @ramlax/api`. Set environment values, production `WEB_ORIGIN`, MongoDB Atlas URI with network access restricted to the host, and TLS-enabled MongoDB.
-- Restrict admin dashboard accounts through the one-time bootstrap; don't expose database or provider credentials in Vite variables.
+- **Web (Vercel):** create a Vercel project with root directory `apps/web`; set `VITE_API_URL` to the API deployment origin plus `/api/v1` (for example, `https://<api-domain>/api/v1`). Vite's SPA fallback serves the client routes from `index.html`.
+- **API (Vercel):** create a second Vercel project from the same repository with root directory `apps/api`. Keep **Include source files outside the Root Directory** enabled so the npm workspace can access `packages/shared`; the included `apps/api/vercel.json` runs the API build. Vercel detects the Express function from `src/server.ts`.
+- Set API Production and Preview environment variables in Vercel: `MONGODB_URI`, a unique random `JWT_SECRET` of at least 32 characters, a unique random `COOKIE_SECRET`, exact HTTPS frontend origin(s) in comma-separated `WEB_ORIGIN` with no trailing slash, and `BUSINESS_TIME_ZONE`. Add optional business contact values as needed. Vercel supplies `NODE_ENV`; do not set a long-running `PORT` server for Functions.
+- Confirm the MongoDB Atlas network access rules permit the Vercel deployment to connect. Then redeploy both projects so the web build receives the current `VITE_API_URL` and the API receives its environment values.
+- API diagnostics: `/` describes the API, `/api/v1/health` reports the runtime mode, and `/ready` checks MongoDB connectivity and catalog initialization.
+- Vercel Functions cannot host WebSocket connections. The API disables Socket.IO on Vercel and the admin dashboard falls back to 15-second polling; a persistent Node host is needed for Socket.IO push updates.
+- Restrict admin dashboard accounts through the one-time bootstrap; never expose database or provider credentials in Vite variables.
 
 ## Development notes and limitations
 

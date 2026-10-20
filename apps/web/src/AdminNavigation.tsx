@@ -18,7 +18,7 @@ const links = [
 export function AdminNavigation() {
   const [error, setError] = useState('');
   const [open, setOpen] = useState(false);
-  const [realtimeState, setRealtimeState] = useState<'connecting' | 'live' | 'offline'>('connecting');
+  const [realtimeState, setRealtimeState] = useState<'connecting' | 'live' | 'polling'>('connecting');
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission | 'unsupported'>(() => typeof Notification === 'undefined' ? 'unsupported' : Notification.permission);
   const navigate = useNavigate();
   const location = useLocation();
@@ -26,12 +26,13 @@ export function AdminNavigation() {
   const newEnquiries = useQuery<{ pagination: { total: number } }>({
     queryKey: ['adminNewEnquiryCount'],
     queryFn: async () => (await api.get('/admin/contacts', { params: { status: 'new', limit: 1 } })).data,
-    refetchInterval: 60_000,
+    refetchInterval: realtimeState === 'polling' ? 15_000 : 60_000,
     retry: false,
   });
   useEffect(() => {
     const socketOrigin = new URL(api.defaults.baseURL || window.location.origin, window.location.origin).origin;
-    const socket = io(socketOrigin, { withCredentials: true, reconnection: true, reconnectionDelayMax: 10_000 });
+    let socket: ReturnType<typeof io> | undefined;
+    let cancelled = false;
     const refreshContacts = () => {
       void queryClient.invalidateQueries({ queryKey: ['adminContacts'] });
       void queryClient.invalidateQueries({ queryKey: ['adminNewEnquiryCount'] });
@@ -46,20 +47,41 @@ export function AdminNavigation() {
         new Notification(title, { body, icon: '/favicon.svg' });
       }
     };
-    socket.on('connect', () => setRealtimeState('live'));
-    socket.on('disconnect', () => setRealtimeState('offline'));
-    socket.on('connect_error', () => setRealtimeState('offline'));
-    socket.on('admin:contacts:changed', (event: { status?: string }) => {
-      refreshContacts();
-      if (event.status === 'new') showBrowserAlert('New customer enquiry', 'A customer has sent a message through your website.');
+    void api.get('/health').then(response => {
+      if (cancelled) return;
+      if (response.data.realtime === 'polling') { setRealtimeState('polling'); return; }
+      socket = io(socketOrigin, { withCredentials: true, reconnection: true, reconnectionDelayMax: 10_000 });
+      socket.on('connect', () => setRealtimeState('live'));
+      socket.on('disconnect', () => setRealtimeState('polling'));
+      socket.on('connect_error', () => setRealtimeState('polling'));
+      socket.on('admin:contacts:changed', (event: { status?: string }) => {
+        refreshContacts();
+        if (event.status === 'new') showBrowserAlert('New customer enquiry', 'A customer has sent a message through your website.');
+      });
+      socket.on('admin:bookings:changed', refreshBookings);
+      socket.on('admin:notification', (event: { title?: string }) => {
+        void queryClient.invalidateQueries({ queryKey: ['adminNotifications'] });
+        showBrowserAlert(event.title || 'Booking updated', 'Open the RamLaksh admin panel to review the update.');
+      });
+    }).catch(() => {
+      if (!cancelled) setRealtimeState('polling');
     });
-    socket.on('admin:bookings:changed', refreshBookings);
-    socket.on('admin:notification', (event: { title?: string }) => {
-      void queryClient.invalidateQueries({ queryKey: ['adminNotifications'] });
-      showBrowserAlert(event.title || 'Booking updated', 'Open the RamLaksh admin panel to review the update.');
-    });
-    return () => { socket.removeAllListeners(); socket.disconnect(); };
+    return () => { cancelled = true; socket?.removeAllListeners(); socket?.disconnect(); };
   }, [queryClient]);
+  useEffect(() => {
+    if (realtimeState !== 'polling') return;
+    const refresh = () => {
+      void queryClient.invalidateQueries({ queryKey: ['adminBookings'] });
+      void queryClient.invalidateQueries({ queryKey: ['adminBookingsInsights'] });
+      void queryClient.invalidateQueries({ queryKey: ['adminReport'] });
+      void queryClient.invalidateQueries({ queryKey: ['adminContacts'] });
+      void queryClient.invalidateQueries({ queryKey: ['adminNewEnquiryCount'] });
+      void queryClient.invalidateQueries({ queryKey: ['adminNotifications'] });
+    };
+    refresh();
+    const timer = window.setInterval(refresh, 15_000);
+    return () => window.clearInterval(timer);
+  }, [queryClient, realtimeState]);
   const signOut = async () => {
     try {
       await api.post('/auth/logout');
@@ -77,7 +99,7 @@ export function AdminNavigation() {
   return <>
     <div className="admin-mobile-head"><strong>RamLaksh Admin</strong><button type="button" className="button button-outline" aria-expanded={open} aria-controls="admin-navigation" onClick={() => setOpen(value => !value)}>{open ? 'Close menu' : 'Menu'}</button></div>
     <nav id="admin-navigation" className={`admin-nav admin-sidebar${open ? ' is-open' : ''}`} aria-label="Admin navigation">
-      <span className="admin-nav-brand">RamLaksh <small>OPERATIONS</small><span className={`admin-live-indicator is-${realtimeState}`}><i/>{realtimeState === 'live' ? 'Live updates on' : realtimeState === 'connecting' ? 'Connecting live updates' : 'Live updates offline'}</span></span>
+      <span className="admin-nav-brand">RamLaksh <small>OPERATIONS</small><span className={`admin-live-indicator is-${realtimeState}`}><i/>{realtimeState === 'live' ? 'Live updates on' : realtimeState === 'connecting' ? 'Connecting live updates' : 'Updates every 15 seconds'}</span></span>
       {notificationPermission !== 'unsupported' && <button type="button" className="admin-alert-setup" disabled={notificationPermission !== 'default'} onClick={enableBrowserAlerts}>{notificationPermission === 'granted' ? 'Desktop alerts enabled' : notificationPermission === 'denied' ? 'Desktop alerts blocked in browser' : 'Enable desktop alerts'}</button>}
       {links.map(([to, label, end]) => <NavLink key={to} to={to} end={end} className={({ isActive }) => isActive || (to === '/admin' && (location.pathname === '/admin/bookings' || location.pathname.startsWith('/admin/bookings/'))) ? 'active' : undefined} onClick={() => setOpen(false)}>{label}{to === '/admin/contacts' && !!newEnquiries.data?.pagination.total && <span className="admin-nav-count">{newEnquiries.data.pagination.total > 99 ? '99+' : newEnquiries.data.pagination.total}</span>}</NavLink>)}
       <button className="admin-signout" type="button" onClick={signOut}>Sign out</button>
