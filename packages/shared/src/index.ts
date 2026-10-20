@@ -12,7 +12,7 @@ export type PriceKind = 'fixed' | 'starting' | 'quote';
 export type ServicePrice = { kind: PriceKind; amount?: number; currency: string; additionalCharges: { name: string; amount: number }[] };
 export type ServiceAvailability = { city: string; areas: string[]; active: boolean };
 export type ServiceTypeView = { _id?: string; slug: string; name: string; active?: boolean; availability: ServiceAvailability[]; pricing: ServicePrice };
-export type ServiceView = { _id?: string; slug: string; name: string; short: string; description: string; icon: string; active?: boolean; serviceTypes: ServiceTypeView[] };
+export type ServiceView = { _id?: string; slug: string; name: string; short: string; description: string; icon: string; active?: boolean; imageUrl?: string | null; galleryImageUrl?: string | null; serviceTypes: ServiceTypeView[] };
 
 export type BookingIssueKind = 'replacement' | 'delay' | 'quality' | 'access' | 'other';
 export type BookingIssueSnapshot = { _id: string; kind: BookingIssueKind; message: string; };
