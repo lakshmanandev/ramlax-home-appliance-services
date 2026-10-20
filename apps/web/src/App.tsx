@@ -93,6 +93,7 @@ function Home() {
       <ServiceCards />
     </section>
 
+
     <section className="section why-section" aria-labelledby="why-title"><div className="section-heading"><div><span className="eyebrow">A MORE CONSIDERED SERVICE</span><h2 id="why-title">What you can expect.</h2><p>Clear information at each step, from your first request to the team’s follow-up.</p></div></div><div className="trust-grid"><TrustCard icon={<CalendarCheck/>} title="Convenient appointment request" body="Choose a preferred date and time when you book. Our team confirms availability with you."/><TrustCard icon={<ClipboardList/>} title="Service details upfront" body="See the currently configured service options and pricing before you submit a request."/><TrustCard icon={<BadgeCheck/>} title="A reference for follow-up" body="Save your booking reference after submitting so you can check the request later."/><TrustCard icon={<Headset/>} title="Direct communication" body="Our team follows up using the contact details you provide to review coverage and next steps."/></div></section>
     <section className="section gallery-section" aria-labelledby="gallery-title"><div className="section-heading"><div><span className="eyebrow">OUR SERVICES IN PICTURES</span><h2 id="gallery-title">Appliance care around the home.</h2><p>Illustrative stock photos of the appliances and service types you can request. They are not customer project photos.</p></div><Link className="text-link" to="/services">Explore services <ArrowRight size={17}/></Link></div><ServiceGallery/></section>
     <section className="section process-section" id="how-it-works">
@@ -170,12 +171,37 @@ function AdminLogin() {
 }
 function AdminShell() { return <AdminRouteGuard><div className="admin-shell"><aside className="admin-sidebar-wrap"><AdminNavigation/></aside><div className="admin-content"><Outlet/></div></div></AdminRouteGuard>; }
 function Admin() { return <AdminBookings/> }
+type AdminTechnicianRow = { _id: string; name: string; phone: string; skills: string[]; cities: string[]; areas: string[]; active: boolean };
 function AdminTechnicians() {
   const [status, setStatus] = useState('');
   const [form, setForm] = useState({ name: '', phone: '', skills: '', cities: '', areas: '' });
-  const query = useQuery({ queryKey: ['adminTechnicians'], queryFn: async () => (await api.get('/admin/technicians')).data.data, retry: false });
+  const [editingId, setEditingId] = useState('');
+  const [saving, setSaving] = useState(false);
+  const query = useQuery<AdminTechnicianRow[]>({ queryKey: ['adminTechnicians'], queryFn: async () => (await api.get('/admin/technicians')).data.data, retry: false });
   const cities = useQuery({ queryKey: ['adminCities'], queryFn: async () => (await api.get('/admin/cities')).data.data, retry: false });
   const services = useQuery<ServiceView[]>({ queryKey: ['adminServices'], queryFn: async () => (await api.get('/admin/services')).data.data, retry: false });
+  const csv = (value: string) => value.split(',').map(item => item.trim()).filter(Boolean);
+  function editTechnician(technician: AdminTechnicianRow) {
+    setEditingId(technician._id);
+    setForm({ name: technician.name, phone: technician.phone, skills: technician.skills.join(', '), cities: technician.cities.join(', '), areas: technician.areas.join(', ') });
+    setStatus(`Editing ${technician.name}.`);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+  async function saveTechnician(event: FormEvent) {
+    event.preventDefault(); setSaving(true); setStatus('');
+    const payload = { name: form.name, phone: form.phone, skills: csv(form.skills), cities: csv(form.cities), areas: csv(form.areas) };
+    try {
+      if (editingId) await api.patch(`/admin/technicians/${editingId}`, payload);
+      else await api.post('/admin/technicians', { ...payload, active: true });
+      setStatus(editingId ? 'Technician profile updated.' : 'Technician added.');
+      setEditingId(''); setForm({ name: '', phone: '', skills: '', cities: '', areas: '' }); await query.refetch();
+    } catch (err) { setStatus((err as { response?: { data?: { error?: { message?: string } } } }).response?.data?.error?.message || 'Could not save technician. Check service, city, and area slugs.'); }
+    finally { setSaving(false); }
+  }
+  async function toggleTechnician(technician: AdminTechnicianRow) {
+    try { await api.patch(`/admin/technicians/${technician._id}`, { active: !technician.active }); setStatus(`${technician.name} ${technician.active ? 'deactivated' : 'activated'}.`); await query.refetch(); }
+    catch (err) { setStatus((err as { response?: { data?: { error?: { message?: string } } } }).response?.data?.error?.message || `Could not update ${technician.name}.`); }
+  }
 
   return (
     <section className="page-section">
@@ -184,32 +210,16 @@ function AdminTechnicians() {
         <AdminSignIn />
       ) : (
         <>
-          <form className="contact-card" onSubmit={async e => {
-            e.preventDefault();
-            try {
-              await api.post('/admin/technicians', {
-                name: form.name,
-                phone: form.phone,
-                skills: form.skills.split(',').map(v => v.trim()).filter(Boolean),
-                cities: form.cities.split(',').map(v => v.trim()).filter(Boolean),
-                areas: form.areas.split(',').map(v => v.trim()).filter(Boolean),
-                active: true,
-              });
-              setStatus('Technician added.');
-              query.refetch();
-            } catch (err) {
-              setStatus((err as { response?: { data?: { error?: { message?: string } } } }).response?.data?.error?.message || 'Could not add technician');
-            }
-          }}>
-            <h2>Add a technician</h2>
+          <form className="contact-card technician-form" onSubmit={saveTechnician}>
+            <h2>{editingId ? 'Edit technician profile' : 'Add a technician'}</h2>
             <Field label="Name" name="name" value={form.name} set={(_, v) => setForm(old => ({ ...old, name: String(v) }))} required />
             <Field label="Phone" name="phone" value={form.phone} set={(_, v) => setForm(old => ({ ...old, phone: String(v) }))} type="tel" required />
-            <Field label="Service slugs" name="skills" value={form.skills} set={(_, v) => setForm(old => ({ ...old, skills: String(v) }))} required />
+            <Field label="Service slugs (comma separated)" name="skills" value={form.skills} set={(_, v) => setForm(old => ({ ...old, skills: String(v) }))} required />
             <small className="form-help">Configured service slugs: {(services.data || []).filter(service => service.active).map(service => service.slug).join(', ') || 'none yet'}</small>
-            <Field label="Covered city slugs" name="cities" value={form.cities} set={(_, v) => setForm(old => ({ ...old, cities: String(v) }))} required />
-            <Field label="Covered areas" name="areas" value={form.areas} set={(_, v) => setForm(old => ({ ...old, areas: String(v) }))} />
-            <small className="form-help">Configured city slugs: {(cities.data || []).map((c: { slug: string }) => c.slug).join(', ') || 'none yet'}</small>
-            <button className="button">Save technician <ArrowRight size={17}/></button>
+            <Field label="Covered city slugs (comma separated)" name="cities" value={form.cities} set={(_, v) => setForm(old => ({ ...old, cities: String(v) }))} required />
+            <Field label="Covered areas (comma separated)" name="areas" value={form.areas} set={(_, v) => setForm(old => ({ ...old, areas: String(v) }))} />
+            <small className="form-help">Configured city slugs: {(cities.data || []).map((c: { slug: string }) => c.slug).join(', ') || 'none yet'}. Leave areas empty for all areas in the selected cities.</small>
+            <div className="form-actions"><button className="button" disabled={saving}>{saving ? 'Saving…' : editingId ? 'Save technician' : 'Add technician'} <ArrowRight size={17}/></button>{editingId && <button type="button" className="button button-quiet" onClick={() => { setEditingId(''); setForm({ name: '', phone: '', skills: '', cities: '', areas: '' }); setStatus('Edit cancelled.'); }}>Cancel</button>}</div>
           </form>
 
           <div className="table-wrap admin-table">
@@ -221,22 +231,24 @@ function AdminTechnicians() {
                   <th>Skills</th>
                   <th>Coverage</th>
                   <th>Status</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {query.data?.map((t: { _id: string; name: string; phone: string; skills: string[]; cities: string[]; active: boolean }) => (
+                {query.data?.map(t => (
                   <tr key={t._id}>
                     <td>{t.name}</td>
                     <td>{t.phone}</td>
                     <td>{t.skills.join(', ')}</td>
-                    <td>{t.cities.join(', ')}</td>
-                    <td>{t.active ? 'Active' : 'Inactive'}</td>
+                    <td>{t.cities.join(', ')}{t.areas.length ? ` · ${t.areas.join(', ')}` : ' · all areas'}</td>
+                    <td><span className={`technician-status ${t.active ? 'is-active' : 'is-inactive'}`}>{t.active ? 'Active' : 'Inactive'}</span></td>
+                    <td><div className="technician-actions"><button type="button" className="button button-quiet" onClick={() => editTechnician(t)}>Edit</button><button type="button" className="button button-outline" onClick={() => void toggleTechnician(t)}>{t.active ? 'Deactivate' : 'Activate'}</button></div></td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-          {status && <p role="status">{status}</p>}
+          {status && <p role="status" className="admin-notice">{status}</p>}
         </>
       )}
     </section>

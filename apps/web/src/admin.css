@@ -99,3 +99,11 @@
 @media(max-width:640px){.admin-catalog-edit>form:first-child,.service-type-form{grid-template-columns:1fr}.admin-catalog-edit>form:first-child>h2,.admin-catalog-edit>form:first-child>label.field:nth-of-type(5),.admin-catalog-edit>form:first-child>.form-actions,.service-type-form>h2,.service-type-form>label.field:nth-of-type(1),.service-type-form>.form-grid,.service-type-form>label.field:nth-of-type(6),.service-type-form>.form-help,.service-type-form>.form-actions{grid-column:1}.service-type-form>.form-grid{grid-template-columns:1fr}}
 .admin-live-indicator.is-polling i{background:#d7a43b;box-shadow:0 0 0 3px #fff4dc}
 @media(max-width:640px){.admin-content .page-section{padding:20px 16px}}
+.technician-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 14px;max-width:920px;margin:0 0 18px}
+.technician-form>h2,.technician-form>.form-help,.technician-form>.form-actions{grid-column:1/-1}
+.technician-actions{display:flex;flex-wrap:wrap;gap:6px}
+.technician-actions .button{min-height:34px;padding:7px 10px;font-size:.78rem;box-shadow:none}
+.technician-status{display:inline-flex;align-items:center;padding:4px 9px;border-radius:999px;font-size:.75rem;font-weight:700}
+.technician-status.is-active{background:#e6f5ef;color:#14724f}
+.technician-status.is-inactive{background:#f0f2f4;color:#64748b}
+@media(max-width:640px){.technician-form{grid-template-columns:1fr}.technician-form>h2,.technician-form>.form-help,.technician-form>.form-actions{grid-column:1}.technician-actions{min-width:160px}}

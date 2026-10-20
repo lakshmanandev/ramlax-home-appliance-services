@@ -1391,3 +1391,4 @@ body { background: var(--bg); color: var(--text); }
   --motion-fast: 140ms; --motion-base: 200ms;
 }
 :is(a,button,input,select,textarea,summary):focus-visible { outline: 3px solid rgba(23,102,165,.42); outline-offset: 2px; }
+

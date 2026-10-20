@@ -30,6 +30,7 @@ export default function AdminBookings() {
   const [selectedStatus, setSelectedStatus] = useState<BookingStatusWithWorkflow | 'all'>('all');
   const [search, setSearch] = useState('');
   const [selectedBookingId, setSelectedBookingId] = useState<string | null>(null);
+  const [dispatchError, setDispatchError] = useState('');
 
   const bookingsQuery = useQuery({
     queryKey: ['adminBookings', selectedStatus, search],
@@ -52,8 +53,14 @@ export default function AdminBookings() {
   const selectedBooking = bookingsQuery.data?.find(booking => booking._id === selectedBookingId) ?? null;
 
   async function assignTechnician(bookingId: string, technicianId: string) {
-    await api.patch(`/admin/bookings/${bookingId}/assign`, { technicianId });
-    await bookingsQuery.refetch();
+    if (!technicianId) return;
+    setDispatchError('');
+    try {
+      await api.patch(`/admin/bookings/${bookingId}/assignment`, { technicianId });
+      await bookingsQuery.refetch();
+    } catch (error) {
+      setDispatchError((error as { response?: { data?: { error?: { message?: string } } } }).response?.data?.error?.message || 'Could not assign this technician.');
+    }
   }
 
   async function updateStatus(bookingId: string, status: BookingStatusWithWorkflow) {
@@ -184,6 +191,7 @@ export default function AdminBookings() {
                     </select>
                     <button className="button button-quiet" onClick={() => updateStatus(selectedBooking._id, 'completed')}>Mark complete</button>
                   </div>
+                  {dispatchError && <p role="alert" className="inline-error">{dispatchError}</p>}
                 </div>
 
                 {selectedBooking.issues?.length ? (
