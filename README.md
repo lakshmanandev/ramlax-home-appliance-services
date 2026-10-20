@@ -67,7 +67,7 @@ Web: `VITE_API_URL`. Set API origins and frontend origin consistently for deploy
 
 ## Deployment
 
-- **Web (Vercel):** create a Vercel project with root directory `apps/web`; set `VITE_API_URL` to the API deployment origin plus `/api/v1` (for example, `https://<api-domain>/api/v1`). Vite's SPA fallback serves the client routes from `index.html`.
+- **Web (Vercel):** create a Vercel project with root directory `apps/web`. Configure `VITE_API_URL` as the API deployment origin plus `/api/v1`. The Vite app's `vercel.json` falls back to `index.html` for client-side routes so direct links and refreshes work.
 - **API (Vercel):** create a second Vercel project from the same repository with root directory `apps/api`. Keep **Include source files outside the Root Directory** enabled so the npm workspace can access `packages/shared`; the included `apps/api/vercel.json` runs the API build. Vercel detects the Express function from `src/server.ts`.
 - Set API Production and Preview environment variables in Vercel: `MONGODB_URI`, a unique random `JWT_SECRET` of at least 32 characters, a unique random `COOKIE_SECRET`, exact HTTPS frontend origin(s) in comma-separated `WEB_ORIGIN` with no trailing slash, and `BUSINESS_TIME_ZONE`. Add optional business contact values as needed. Vercel supplies `NODE_ENV`; do not set a long-running `PORT` server for Functions.
 - Confirm the MongoDB Atlas network access rules permit the Vercel deployment to connect. Then redeploy both projects so the web build receives the current `VITE_API_URL` and the API receives its environment values.
