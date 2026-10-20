@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { Link, Outlet, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { AirVent, ArrowRight, Check, ChevronRight, Droplets, Eye, EyeOff, Menu, Phone, ShieldCheck, Tv, WashingMachine, X, MessageCircle, Wrench, CalendarCheck, ClipboardList, Headset, BadgeCheck, MapPin } from 'lucide-react';

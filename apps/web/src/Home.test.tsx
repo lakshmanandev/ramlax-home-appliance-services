@@ -11,9 +11,10 @@ vi.mock('./api', () => ({ api: { get: vi.fn() } }));
 
 function renderHome() {
   const service = { slug: 'ac', name: 'Air Conditioner', short: 'AC', description: 'AC service at home.', icon: 'snowflake', serviceTypes: [{ slug: 'installation', name: 'AC installation', pricing: { kind: 'fixed', amount: 1500, currency: 'INR' } }] };
+  const television = { slug: 'tv', name: 'Televisions', short: 'TV', description: 'Television setup at home.', icon: 'tv', serviceTypes: [{ slug: 'installation', name: 'Television setup', pricing: { kind: 'quote', currency: 'INR' } }] };
   vi.mocked(api.get).mockImplementation(async path => {
     if (!path) return { data: { data: [] } } as never;
-    if (path === '/services') return { data: { data: [service] } } as never;
+    if (path === '/services') return { data: { data: [service, television] } } as never;
     if (path === '/settings/public') return { data: { data: { phone: '', whatsappPhone: '' } } } as never;
     if (path === '/locations') return { data: { data: [{ name: 'Chennai' }] } } as never;
     if (path === '/reviews') return { data: { data: [{ _id: 'approved-1', service: 'AC installation', rating: 5, displayName: 'A Customer', text: 'The booking follow-up was clear.' }] } } as never;
@@ -31,7 +32,7 @@ describe('public homepage', () => {
     renderHome();
     expect(await screen.findByText('AC installation')).toBeInTheDocument();
     expect(screen.getByText('INR 1,500')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /book service/i })).toHaveAttribute('href', '/book?service=ac');
+    expect(screen.getAllByRole('link', { name: /book service/i }).some(link => link.getAttribute('href') === '/book?service=ac')).toBe(true);
     expect(api.get).toHaveBeenCalledWith('/services');
   });
 
